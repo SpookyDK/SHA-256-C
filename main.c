@@ -5,26 +5,9 @@
 
 #define rotate_right32(data, amount) (((data) >> (amount)) | ((data) << (32 - (amount))))
 #define rotate_left32(data, amount) (((data) << (amount)) | ((data) >> (32 - (amount))))
-static u_char *padded_message = NULL;
-static uint32_t padded_message_len = 0;
-int pad_message(const u_char *mymessage, const uint32_t message_len, u_char **out, uint32_t *outlen, uint32_t *outchunks) {
-    // TODO Probaly some double bits to bytes conversion here that can be skipped, or rethought
-    uint64_t size_b = (uint64_t)message_len * 8;
-    // Binary arithmatics to find the nearest value of a multiple of 512 that fits the entire message + 64 bits
-    uint32_t nearest = (size_b + 1 + 64 + 511) & ~(512 - 1);
-    uint32_t nearest_byte = nearest / 8;
-    // printf("pad_len = %d", padded_message_len);
-    if (padded_message_len != nearest_byte) {
-        free(padded_message);
-        padded_message = calloc(1, nearest_byte);
-        padded_message_len = nearest_byte;
-    }
-    if (padded_message == NULL) {
-        // printf("It was null\n");
-        return -1;
-    }
-    // line 25
+int pad_message(const u_char *mymessage, const uint64_t message_len, const uint64_t nearest_byte, u_char *padded_message) {
     memcpy(padded_message, mymessage, message_len);
+    uint64_t size_b = message_len * 8;
     // Writes the need 1 required by the sha256 standard followed by the last 8 bytes being used for the length of the message.
     padded_message[message_len] = 0b10000000;
     padded_message[nearest_byte - 8] = (size_b >> 56) & 0xFF;
@@ -35,11 +18,6 @@ int pad_message(const u_char *mymessage, const uint32_t message_len, u_char **ou
     padded_message[nearest_byte - 3] = (size_b >> 16) & 0xFF;
     padded_message[nearest_byte - 2] = (size_b >> 8) & 0xFF;
     padded_message[nearest_byte - 1] = (size_b) & 0xFF;
-
-    // Set outputs for the caller
-    *out = padded_message;
-    *outlen = nearest_byte;
-    *outchunks = nearest / 512;
 
     return 0;
 }
@@ -59,7 +37,6 @@ static const uint32_t H[8] = {
 int process_chunk(u_char *const padded_message_chunk, uint32_t chunk_len, uint32_t *h_values) {
 
     if (chunk_len != 512) {
-        printf("chunk_len shall always be 512\n2");
         return 1;
     }
     // Some constant
@@ -116,59 +93,49 @@ int process_chunk(u_char *const padded_message_chunk, uint32_t chunk_len, uint32
     h_values[7] += h;
     return 0;
 }
-int sha256_hash(const u_char *mymessage, const uint32_t message_len, u_char **out, uint32_t *outlen) {
-    u_char *padded_message = NULL;
+int sha256_hash(const u_char *mymessage, const uint32_t message_len, u_char out[32]) {
     uint32_t padded_length = 0;
-    uint32_t chunks = 0;
-    pad_message(mymessage, message_len, &padded_message, &padded_length, &chunks);
+    uint64_t size_b = (uint64_t)message_len * 8;
+    uint32_t nearest = (size_b + 1 + 64 + 511) & ~(512 - 1);
+    uint32_t nearest_byte = nearest / 8;
+    uint32_t chunks = nearest / 512;
+
+    u_char padded_message[nearest_byte];
+    memset(padded_message, 0, nearest_byte * sizeof(char));
+    pad_message(mymessage, message_len, nearest_byte, padded_message);
     uint32_t working_values[8];
     memcpy(working_values, H, 8 * sizeof(uint32_t));
     for (int i = 0; i < chunks; i++) {
         process_chunk(&padded_message[i * 64], 512, working_values);
     }
     // Checks for the case where input is also output, often used for password hashing in loops.
-    if (message_len != 32 || mymessage != *out) {
-        free(*out);
-        *out = malloc(32);
-    }
 
     // After all 8 working values has been processed, these contain our 32 character sha256 hash
     // We convert these back into Little endian
     for (int i = 0; i < 8; i++) {
-        (*out)[i * 4] = (working_values[i] >> 24) & 0xFF; // Most significant byte
-        (*out)[i * 4 + 1] = (working_values[i] >> 16) & 0xFF;
-        (*out)[i * 4 + 2] = (working_values[i] >> 8) & 0xFF;
-        (*out)[i * 4 + 3] = working_values[i] & 0xFF; // Least significant byte
+        (out)[i * 4] = (working_values[i] >> 24) & 0xFF; // Most significant byte
+        (out)[i * 4 + 1] = (working_values[i] >> 16) & 0xFF;
+        (out)[i * 4 + 2] = (working_values[i] >> 8) & 0xFF;
+        (out)[i * 4 + 3] = working_values[i] & 0xFF; // Least significant byte
     }
-    *outlen = 32;
     return 0;
 }
-int append_salt(const u_char *message, const uint32_t message_len, const u_char *salt, uint32_t salt_len, u_char **out, uint32_t *outlen) {
-    *out = malloc(message_len + salt_len);
-    if (*out == NULL) {
-        return 1;
-    }
-
-    memcpy(*out, message, message_len);
-    memcpy(*out + message_len, salt, salt_len);
-    *outlen = message_len + salt_len;
+int append_salt(const u_char *message, const uint32_t message_len, const u_char *salt, uint32_t salt_len, u_char saltedmessage[]) {
+    memcpy(saltedmessage, message, message_len);
+    memcpy(saltedmessage + message_len, salt, salt_len);
     return 0;
 }
 int main() {
     char mymessage[] = "I Love You";
     char mysalt[] = "salt";
-    u_char *saltedmesg = NULL;
     uint32_t outlen;
-    append_salt((u_char *)mymessage, strlen(mymessage), (u_char *)mysalt, strlen(mymessage), &saltedmesg, &outlen);
-    u_char *hashmessage = NULL;
-    sha256_hash(saltedmesg, outlen, &hashmessage, &outlen);
-    free(saltedmesg);
-
-    uint32_t its = 10;
+    uint32_t saltlen = strlen(mysalt) + strlen(mymessage);
+    u_char saltedmessage[saltlen];
+    append_salt((u_char *)mymessage, strlen(mymessage), (u_char *)mysalt, strlen(mysalt), saltedmessage);
+    u_char hashmessage[32] = {0};
+    sha256_hash((u_char *)mymessage, strlen(mymessage), hashmessage);
+    uint32_t its = 100;
     for (int i = 0; i < its; i++) {
-        sha256_hash((u_char *)hashmessage, sizeof(hashmessage[0]) * outlen, &hashmessage, &outlen);
+        sha256_hash((u_char *)hashmessage, 32, hashmessage);
     }
-    free(hashmessage);
-    free(padded_message);
-    printf("did %d its of sha256 on same message", its);
 }
