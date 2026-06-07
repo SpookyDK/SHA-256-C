@@ -148,7 +148,7 @@ int main() {
     u_char *hashmessage = NULL;
     uint32_t outlen;
     sha256_hash((u_char *)mymessage, strlen(mymessage), &hashmessage, &outlen);
-    uint32_t its = 1000;
+    uint32_t its = 100000000;
     for (int i = 0; i < its; i++) {
         sha256_hash((u_char *)hashmessage, sizeof(hashmessage[0]) * outlen, &hashmessage, &outlen);
         // free(hashmessage);
