@@ -143,16 +143,32 @@ int sha256_hash(const u_char *mymessage, const uint32_t message_len, u_char **ou
     *outlen = 32;
     return 0;
 }
+int append_salt(const u_char *message, const uint32_t message_len, const u_char *salt, uint32_t salt_len, u_char **out, uint32_t *outlen) {
+    *out = malloc(message_len + salt_len);
+    if (*out == NULL) {
+        return 1;
+    }
+
+    memcpy(*out, message, message_len);
+    memcpy(*out + message_len, salt, salt_len);
+    *outlen = message_len + salt_len;
+    return 0;
+}
 int main() {
     char mymessage[] = "I Love You";
-    u_char *hashmessage = NULL;
+    char mysalt[] = "salt";
+    u_char *saltedmesg = NULL;
     uint32_t outlen;
-    sha256_hash((u_char *)mymessage, strlen(mymessage), &hashmessage, &outlen);
-    uint32_t its = 100000000;
+    append_salt((u_char *)mymessage, strlen(mymessage), (u_char *)mysalt, strlen(mymessage), &saltedmesg, &outlen);
+    u_char *hashmessage = NULL;
+    sha256_hash(saltedmesg, outlen, &hashmessage, &outlen);
+    free(saltedmesg);
+
+    uint32_t its = 10;
     for (int i = 0; i < its; i++) {
         sha256_hash((u_char *)hashmessage, sizeof(hashmessage[0]) * outlen, &hashmessage, &outlen);
-        // free(hashmessage);
     }
     free(hashmessage);
+    free(padded_message);
     printf("did %d its of sha256 on same message", its);
 }
