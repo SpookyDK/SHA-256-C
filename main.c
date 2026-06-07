@@ -134,7 +134,7 @@ int main() {
     append_salt((u_char *)mymessage, strlen(mymessage), (u_char *)mysalt, strlen(mysalt), saltedmessage);
     u_char hashmessage[32] = {0};
     sha256_hash((u_char *)mymessage, strlen(mymessage), hashmessage);
-    uint32_t its = 100;
+    uint32_t its = 100000000;
     for (int i = 0; i < its; i++) {
         sha256_hash((u_char *)hashmessage, 32, hashmessage);
     }
