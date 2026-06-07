@@ -5,16 +5,25 @@
 
 #define rotate_right32(data, amount) (((data) >> (amount)) | ((data) << (32 - (amount))))
 #define rotate_left32(data, amount) (((data) << (amount)) | ((data) >> (32 - (amount))))
-
+static u_char *padded_message = NULL;
+static uint32_t padded_message_len = 0;
 int pad_message(const u_char *mymessage, const uint32_t message_len, u_char **out, uint32_t *outlen, uint32_t *outchunks) {
     // TODO Probaly some double bits to bytes conversion here that can be skipped, or rethought
     uint64_t size_b = (uint64_t)message_len * 8;
     // Binary arithmatics to find the nearest value of a multiple of 512 that fits the entire message + 64 bits
     uint32_t nearest = (size_b + 1 + 64 + 511) & ~(512 - 1);
     uint32_t nearest_byte = nearest / 8;
-    u_char *padded_message = calloc(1, nearest_byte);
-    if (padded_message == NULL)
+    // printf("pad_len = %d", padded_message_len);
+    if (padded_message_len != nearest_byte) {
+        free(padded_message);
+        padded_message = calloc(1, nearest_byte);
+        padded_message_len = nearest_byte;
+    }
+    if (padded_message == NULL) {
+        // printf("It was null\n");
         return -1;
+    }
+    // line 25
     memcpy(padded_message, mymessage, message_len);
     // Writes the need 1 required by the sha256 standard followed by the last 8 bytes being used for the length of the message.
     padded_message[message_len] = 0b10000000;
@@ -107,7 +116,7 @@ int process_chunk(u_char *const padded_message_chunk, uint32_t chunk_len, uint32
     h_values[7] += h;
     return 0;
 }
-int sha256_hash(const u_char *mymessage, const uint32_t message_len, char **out, uint32_t *outlen) {
+int sha256_hash(const u_char *mymessage, const uint32_t message_len, u_char **out, uint32_t *outlen) {
     u_char *padded_message = NULL;
     uint32_t padded_length = 0;
     uint32_t chunks = 0;
@@ -117,31 +126,33 @@ int sha256_hash(const u_char *mymessage, const uint32_t message_len, char **out,
     for (int i = 0; i < chunks; i++) {
         process_chunk(&padded_message[i * 64], 512, working_values);
     }
+    // Checks for the case where input is also output, often used for password hashing in loops.
+    if (message_len != 32 || mymessage != *out) {
+        free(*out);
+        *out = malloc(32);
+    }
+
     // After all 8 working values has been processed, these contain our 32 character sha256 hash
-    unsigned char *sha256hash = malloc(32);
     // We convert these back into Little endian
     for (int i = 0; i < 8; i++) {
-        sha256hash[i * 4] = (working_values[i] >> 24) & 0xFF; // Most significant byte
-        sha256hash[i * 4 + 1] = (working_values[i] >> 16) & 0xFF;
-        sha256hash[i * 4 + 2] = (working_values[i] >> 8) & 0xFF;
-        sha256hash[i * 4 + 3] = working_values[i] & 0xFF; // Least significant byte
+        (*out)[i * 4] = (working_values[i] >> 24) & 0xFF; // Most significant byte
+        (*out)[i * 4 + 1] = (working_values[i] >> 16) & 0xFF;
+        (*out)[i * 4 + 2] = (working_values[i] >> 8) & 0xFF;
+        (*out)[i * 4 + 3] = working_values[i] & 0xFF; // Least significant byte
     }
-    *out = (char *)sha256hash;
     *outlen = 32;
-    free(padded_message);
     return 0;
 }
 int main() {
-
     char mymessage[] = "I Love You";
-    char *hashmessage;
+    u_char *hashmessage = NULL;
     uint32_t outlen;
     sha256_hash((u_char *)mymessage, strlen(mymessage), &hashmessage, &outlen);
-    printf("outlen %d\n", outlen);
-    printf("Your Hash: ");
-    for (int i = 0; i < outlen; i++) {
-        // FIX 2: Use standard unsigned char and force a 2-digit hex format
-        printf("%02x", (unsigned char)hashmessage[i]);
+    uint32_t its = 1000;
+    for (int i = 0; i < its; i++) {
+        sha256_hash((u_char *)hashmessage, sizeof(hashmessage[0]) * outlen, &hashmessage, &outlen);
+        // free(hashmessage);
     }
-    printf("\n");
+    free(hashmessage);
+    printf("did %d its of sha256 on same message", its);
 }
