@@ -3,7 +3,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <x86intrin.h>
 #define rotate_right32(data, amount) (((data) >> (amount)) | ((data) << (32 - (amount))))
 #define rotate_left32(data, amount) (((data) << (amount)) | ((data) >> (32 - (amount))))
 int pad_message(const u_char *mymessage, const uint64_t message_len, const uint64_t nearest_byte, u_char *padded_message) {
