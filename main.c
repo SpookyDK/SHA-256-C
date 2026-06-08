@@ -1,4 +1,9 @@
+#ifdef __x86_64__
 #include <immintrin.h>
+#endif
+#ifdef __is_target_arch__
+#include <arm_neon.h>
+#endif
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
