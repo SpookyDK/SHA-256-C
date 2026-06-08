@@ -23,7 +23,7 @@ int pad_message(const u_char *mymessage, const uint64_t message_len, const uint6
     return 0;
 }
 // The 64 K constant used by sha256
-static const uint32_t K[64] = {
+static const uint32_t K[64] __attribute__((aligned(16))) = {
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be,
     0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa,
     0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85,
@@ -145,6 +145,12 @@ int process_chunk_x86(u_char *const padded_message_chunk, uint32_t chunk_len, ui
         W8_11 = W12_15;
         W12_15 = W16_19;
     }
+
+    // Precalculate W+K
+    uint32_t WK[128] __attribute__((aligned(16)));
+    for (int i = 0; i < 64; i++) {
+        WK[i] = hashed_array[i] + K[i];
+    }
     // Now we initialize our 8 working values, based on the passed through variables.
     // Which makes each proccessed chunk dependent on the previous
     uint32_t a = h_values[0], b = h_values[1], c = h_values[2], d = h_values[3];
@@ -154,9 +160,9 @@ int process_chunk_x86(u_char *const padded_message_chunk, uint32_t chunk_len, ui
     __m128i ABEF = _mm_set_epi32(a, b, e, f);
     __m128i CDGH = _mm_set_epi32(c, d, g, h);
     for (int i = 0; i < 64; i += 4) {
-        __m128i VK_first = _mm_setr_epi32(hashed_array[i] + K[i], hashed_array[i + 1] + K[i + 1], 0, 0);
+        __m128i VK_first = _mm_setr_epi32(WK[i], WK[i + 1], 0, 0);
         CDGH = _mm_sha256rnds2_epu32(CDGH, ABEF, VK_first);
-        __m128i VK_second = _mm_setr_epi32(hashed_array[i + 2] + K[i + 2], hashed_array[i + 3] + K[i + 3], 0, 0);
+        __m128i VK_second = _mm_setr_epi32(WK[i + 2], WK[i + 3], 0, 0);
         ABEF = _mm_sha256rnds2_epu32(ABEF, CDGH, VK_second);
     }
 
