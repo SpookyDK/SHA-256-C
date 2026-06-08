@@ -150,7 +150,6 @@ int process_chunk_x86(u_char *const padded_message_chunk, uint32_t chunk_len, ui
     uint32_t a = h_values[0], b = h_values[1], c = h_values[2], d = h_values[3];
     uint32_t e = h_values[4], f = h_values[5], g = h_values[6], h = h_values[7];
 
-    // The x86 instruction requires a certain order or variables in its registers
     __m128i ABEF = _mm_set_epi32(a, b, e, f);
     __m128i CDGH = _mm_set_epi32(c, d, g, h);
     for (int i = 0; i < 64; i += 4) {
@@ -160,26 +159,13 @@ int process_chunk_x86(u_char *const padded_message_chunk, uint32_t chunk_len, ui
         ABEF = _mm_sha256rnds2_epu32(ABEF, CDGH, VK_second);
     }
 
-    // Now we take the 2 high values from both and combine them
     __m128i ABCD = _mm_unpackhi_epi64(CDGH, ABEF);
-    // Now we take the 2 low values from both and combine them
     __m128i EFGH = _mm_unpacklo_epi64(CDGH, ABEF);
 
-    // We switch the order of values.
-    ABCD = _mm_shuffle_epi32(ABCD, _MM_SHUFFLE(0, 1, 2, 3));
-    EFGH = _mm_shuffle_epi32(EFGH, _MM_SHUFFLE(0, 1, 2, 3));
-
-    // We load our inital values again
-    __m128i initial_ABCD = _mm_loadu_si128((const __m128i *)&h_values[0]);
-    __m128i initial_EFGH = _mm_loadu_si128((const __m128i *)&h_values[4]);
-
-    // We add our new values to the inital
-    ABCD = _mm_add_epi32(ABCD, initial_ABCD);
-    EFGH = _mm_add_epi32(EFGH, initial_EFGH);
-
-    // We store the results
-    _mm_storeu_si128((__m128i *)&h_values[0], ABCD);
-    _mm_storeu_si128((__m128i *)&h_values[4], EFGH);
+    // Shuffle the vector lanes so they store as [0]=A, [1]=B, [2]=C, [3]=D...
+    _mm_storeu_si128((__m128i *)&h_values[0], _mm_shuffle_epi32(ABCD, _MM_SHUFFLE(0, 1, 2, 3)));
+    _mm_storeu_si128((__m128i *)&h_values[4], _mm_shuffle_epi32(EFGH, _MM_SHUFFLE(0, 1, 2, 3)));
+    //
     return 0;
 }
 int sha256_hash(const u_char *mymessage, const uint32_t message_len, u_char out[32]) {
@@ -228,7 +214,7 @@ int main() {
     for (int i = 0; i < 32; i++) {
         printf("%02x", hashmessage[i]);
     }
-    uint32_t its = 50000000;
+    uint32_t its = 10;
     for (int i = 0; i < its; i++) {
         sha256_hash((u_char *)hashmessage, 32, hashmessage);
     }
